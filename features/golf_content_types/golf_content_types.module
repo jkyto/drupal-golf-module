@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the Golf content types feature.
+ */
+
+include_once 'golf_content_types.features.inc';

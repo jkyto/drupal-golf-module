@@ -1,0 +1,14 @@
+.node-form div[class*='field-name-field-hole-']{
+	display: inline-block;
+	margin-right: 4px;
+}
+
+.node-form div[class*='field-name-field-hole-'] input{
+	width: 60px;
+}
+
+.node-round-form .field-name-field-hcp,
+.node-round-form .field-name-field-playing-hcp{
+	display: inline-block;
+	margin-right: 10px;
+}

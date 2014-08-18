@@ -1,0 +1,81 @@
+<?php
+
+
+include('features/golf_content_types/golf_content_types.features.inc');
+include('features/golf_content_types/golf_content_types.features.field_base.inc');
+include('features/golf_content_types/golf_content_types.features.field_instance.inc');
+// include('features/golf_content_types/golf_content_types.field_group.inc');
+
+/**
+ * Implements hook_install().
+ */
+function golf_install() {
+
+  foreach (golf_content_types_node_info() as $key => $value) {
+    $value['type'] = $key;
+    node_type_save($value);
+  }
+  add_custom_fields();
+
+  // Add field groups
+  // foreach (golf_content_types_field_group_info() as $key => $value) {
+  //   field_group_group_save($value);
+  // }
+  cache_clear_all();
+}
+
+
+/**
+ * Implements hook_uninstall().
+ */
+function golf_uninstall() {
+
+  foreach (golf_content_types_node_info() as $key => $value) {
+    $ournewtype = $key;
+    $sql = 'SELECT nid FROM {node} n WHERE n.type = :type';
+    $result = db_query($sql, array(':type' => $ournewtype));
+    $nodeids = array();
+    foreach ($result as $row) {
+        $nodeids[] = $row->nid;
+    }
+    node_delete_multiple($nodeids);
+    delete_custom_fields();
+    node_type_delete($ournewtype);
+    field_purge_batch(500);
+  }
+
+  cache_clear_all();
+    
+}
+
+
+
+
+
+function add_custom_fields() {
+    foreach (golf_content_types_field_default_field_bases() as $field) {
+        field_create_field($field);
+    }
+    foreach (golf_content_types_field_default_field_instances() as $fieldinstance) {
+        // $fieldinstance['entity_type'] = 'node';
+        // $fieldinstance['bundle'] = 'round';
+        // print_r($fieldinstance);
+        field_create_instance($fieldinstance);
+    }
+}
+
+function delete_custom_fields() {
+    foreach (array_keys(golf_content_types_field_default_field_bases()) as $field) {
+        field_delete_field($field);
+    }
+    // $instances = field_info_instances('node', 'round');
+    // foreach ($instances as $instance_name => $fieldinstance) {
+    //     field_delete_instance($fieldinstance);
+    // }
+}
+
+
+
+
+
+
