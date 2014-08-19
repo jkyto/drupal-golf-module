@@ -1,22 +1,13 @@
 <?php
 /**
  * @file
- * golf_content_types.features.inc
+ * golf_scores.features.inc
  */
-
-/**
- * Implements hook_ctools_plugin_api().
- */
-function golf_content_types_ctools_plugin_api($module = NULL, $api = NULL) {
-  if ($module == "field_group" && $api == "field_group") {
-    return array("version" => "1");
-  }
-}
 
 /**
  * Implements hook_node_info().
  */
-function golf_content_types_node_info() {
+function golf_scores_node_info() {
   $items = array(
     'golf_contest' => array(
       'name' => t('Contest'),

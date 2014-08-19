@@ -1,3 +1,16 @@
+table.contest-results,
+table.tournament-stats, 
+table.tournament-stats{
+	width: 100%;
+}
+table.contest-results td, table.contest-results th{
+	font-size: 0.9em;
+	padding: 2px;
+}
+table.contest-results th{
+	text-align: center;
+}
+
 table.contest-results td.player-name{
 	font-weight: bold;
 	min-width: 60px;
@@ -76,6 +89,16 @@ table.tournament-ranking .player-name,table.tournament-ranking .total{
 table.tournament-ranking .score,table.tournament-ranking .total{
 	text-align: center;
 }
+
+table.tournament-ranking th, table.tournament-stats th {
+	text-align: center;
+}
+
+table.tournament-stats td, table.tournament-stats th {
+	padding: 2px;
+	font-size: 0.9em;
+}
+
 
 
 #tournament-contests{

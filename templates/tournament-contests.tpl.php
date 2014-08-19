@@ -32,7 +32,7 @@ $contests_markup = '';
         $query['contest_id'] = $contest['contest']->nid;
         $query['destination'] = current_path();
 
-        print l('Add round', 'node/add/round', array('query'=>$query,'attributes' => array('class' => array('add-round','btn'))));
+        print l('Add round', 'node/add/golf-round', array('query'=>$query,'attributes' => array('class' => array('add-round','btn'))));
       }
 
       print '</div>';

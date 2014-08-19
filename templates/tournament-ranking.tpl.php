@@ -14,7 +14,7 @@
       }
       ?>
 
-      <th></th>
+      <th><?php print t('Total'); ?></th>
     </tr>
   </thead>
 

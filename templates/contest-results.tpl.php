@@ -6,10 +6,10 @@
 			foreach ($course->holes as $key => $value) {    
 			    print '<th>'.$value['hole'].'</th>';
 
-			    if($value['hole'] == 9) 
+			    if ($value['hole'] == 9 ) 
 			      print '<th>'.t('Out').'</th>';
 
-			    if($value['hole'] == 18){ 
+			    if ($value['hole'] == 18 ){
 			      print '<th>'.t('In').'</th>';
 			      print '<th>'.t('Total').'</th>';
 			      print '<th>'.t('Net').'</th>';

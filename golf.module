@@ -1,4 +1,9 @@
 <?php
+/**
+ * @file
+ * The main codebase for golf_contenst.
+ *
+ */
 
 
 define('PENALTY_VALUE', 36);
@@ -45,8 +50,8 @@ function golf_theme($existing, $type, $theme, $path) {
 }
 
 function get_contest_scorecards($contest_id) {
-  $query = db_select('field_revision_field_ref_contest', 'f');
-  $query->condition('field_ref_contest_target_id', $contest_id);
+  $query = db_select('field_revision_field_contest', 'f');
+  $query->condition('field_contest_target_id', $contest_id);
   $query->fields('f', array('entity_id'));        
   $result = $query->execute();
   $nids = array();
@@ -57,19 +62,18 @@ function get_contest_scorecards($contest_id) {
   $nodes = array();
   
   if (count($nids) > 0)
-    $nodes = node_load_multiple($nids, array('type' => 'round'));
+    $nodes = node_load_multiple($nids, array('type' => 'golf_round'));
 
   $scorecards = array();
 
   foreach ($nodes as $key => $value) {
     $scorecards[] = get_round_scorecard($value->nid);
   }
+  
 
   $contest_results = contest_results($contest_id, $scorecards);
 
   return $contest_results;
-
-
 }
 
 /**
@@ -86,16 +90,16 @@ function golf_form_alter(&$form, $form_state, $form_id) {
     drupal_add_css($module_path . '/css/golf-admin.css');
   }
 
-  if ($form_id == 'round_node_form') {
+  if ($form_id == 'golf_round_node_form') {
     $contest_id = (isset($_GET['contest_id']) ? $_GET['contest_id'] : FALSE);
 
     if ($contest_id) {
-      $form['field_ref_contest']['und']['#default_value'] = array($contest_id);
+      $form['field_contest']['und']['#default_value'] = array($contest_id);
     }
 
   }
 
-  if ($form_id == 'contest_node_form') {
+  if ($form_id == 'golf_contest_node_form') { 
     $tournament_id = (isset($_GET['tournament_id']) ? $_GET['tournament_id'] : FALSE);
 
     if ($tournament_id) {
@@ -114,10 +118,15 @@ function print_tournament_page_content($contests) {
     'stats' => FALSE
   );
 
+  if ( (arg(0) == 'node') && (is_numeric(arg(1))) ){
+    $tournament_results['tournament'] = node_load(arg(1)); 
+  }
+
   $vars = array('contests' => $contests);
   $tournament_results['html']['contests'] = theme('tournament_contests', $vars);
     
   $players = array();
+
 
   foreach ($contests as $i => $contest) {
 
@@ -199,7 +208,24 @@ function print_tournament_page_content($contests) {
       }
     }
 
-    usort($players, "sort_overall_ranking_by_net_score");
+    
+    $tournament = $tournament_results['tournament'];
+
+    $tournament_results['tournament']->sort = 'stroke_play_hcp';
+
+    if (isset($tournament->field_game_type) ) {
+      $tournament_results['tournament']->sort = $tournament->field_game_type['und'][0]['value'];
+    }
+    
+    switch ($tournament_results['tournament']->sort) {
+      case 'stroke_play_hcp':
+        usort($players, "sort_overall_ranking_by_net_score");
+        break;
+      
+      default:
+        usort($players, "sort_overall_ranking_by_total_score");
+        break;
+    }    
 
     $tournament_results['players'] = $players;
     $tournament_results['contests'] = $contests;
@@ -225,7 +251,7 @@ function golf_node_view($node, $view_mode, $langcode) {
     $query = db_select('node', 'n')
               ->fields('n', array('nid'))
               ->condition('n.status', 1)
-              ->condition('n.type', 'contest');
+              ->condition('n.type', 'golf_contest');
 
     $myselect = db_select('field_revision_field_tournament', 'field')
       ->fields('field', array('entity_id', 'field_tournament_target_id'))
@@ -239,8 +265,6 @@ function golf_node_view($node, $view_mode, $langcode) {
         $contests[$record['nid']] = get_contest_scorecards($record['nid']);
     }
 
-
-    
 
     if (count($contests)) : 
 
@@ -269,16 +293,16 @@ function golf_node_view($node, $view_mode, $langcode) {
 
   }
 
-  if ($node->type == 'contest') {  
+  if ($node->type == 'golf_contest') {  
 
     $query = db_select('node', 'n')
               ->fields('n', array('nid'))
               ->condition('n.status', 1)
               ->condition('n.type', 'golf_round');
 
-    $myselect = db_select('field_revision_field_ref_contest', 'field')
-      ->fields('field', array('entity_id', 'field_ref_contest_target_id'))
-      ->condition('field.field_ref_contest_target_id', $node->nid);
+    $myselect = db_select('field_revision_field_contest', 'field')
+      ->fields('field', array('entity_id', 'field_contest_target_id'))
+      ->condition('field.field_contest_target_id', $node->nid);
     $alias = $query->join($myselect, 'f', 'n.nid = f.entity_id');
 
 
@@ -310,15 +334,15 @@ function golf_node_view($node, $view_mode, $langcode) {
   }
 
   if ($node->type == 'golf_round') {
-    $contest = node_load($node->field_ref_contest['und'][0]['target_id']);
-    $player = node_load($node->field_ref_player['und'][0]['target_id']);
+    $contest = node_load($node->field_contest['und'][0]['target_id']);
+    $player = node_load($node->field_player['und'][0]['target_id']);
     $output = $player->title;
 
     if ($contest) 
       $output .= ' - ' . $contest->title;
 
     $scorecard = get_round_scorecard($node->nid);
-    $contest_results = contest_results($node->field_ref_contest['und'][0]['target_id'], array(0 => $scorecard));
+    $contest_results = contest_results($node->field_contest['und'][0]['target_id'], array(0 => $scorecard));
 
     $node->content['contest_results'] = array(
           '#markup' => $contest_results['html'],
@@ -330,10 +354,14 @@ function golf_node_view($node, $view_mode, $langcode) {
   }
 }
 
+function sort_holes_by_hole_number($a, $b) {
+  return $a["hole"] - $b["hole"];
+}
+
 function get_round_scorecard($nid) {
   $node = node_load($nid);
 
-  if($node->type == 'golf_round'){
+  if ($node->type == 'golf_round') {
     
     $holes = array();
 
@@ -342,21 +370,34 @@ function get_round_scorecard($nid) {
         $hole_number = (int) substr($key, -1);
         $hole_number = (int) str_replace('field_hole_', '', $key);
         
-        $holes[$hole_number] = array('score'=>FALSE,'hole'=>$hole_number);
+        $holes[$hole_number] = array(
+          'score' => FALSE,
+          'hole' => $hole_number
+        );
 
-        if(isset($value['und'][0]))
+        if (isset($value['und'][0])) {
           $holes[$hole_number]['score'] = (int)$value['und'][0]['value'];
+        }
       }
     }
 
-    $field_ref_player = field_get_items('node', $node, 'field_ref_player');
+    // sort holes
+    $holes_sorted = array();
+    usort($holes, 'sort_holes_by_hole_number');
+    foreach ($holes as $key => $value) {
+      $hole_number = $value['hole'];
+      $holes_sorted[$hole_number] = $value;
+    }
+    $holes = $holes_sorted;
+
+    $field_ref_player = field_get_items('node', $node, 'field_player');
     $field_net_score = field_get_items('node', $node, 'field_net_score');
     $field_playing_hcp = field_get_items('node', $node, 'field_playing_hcp');
     $field_hcp = field_get_items('node', $node, 'field_hcp');
 
     $scorecard = array(
       'player_id' => $field_ref_player[0]['target_id'],
-      'scores'=> $holes,
+      'scores' => $holes,
       'net_score' => FALSE,
       'playing_hcp' => FALSE,
       'hcp' => FALSE,
@@ -364,25 +405,26 @@ function get_round_scorecard($nid) {
       'round' => $node
     );
 
-    if(count($field_net_score) > 0){
+    if (count($field_net_score) > 0) {
       $scorecard['net_score'] = $field_net_score[0]['value'];
     }
-    if(count($field_playing_hcp) > 0){
+    if (count($field_playing_hcp) > 0) {
       $scorecard['playing_hcp'] = $field_playing_hcp[0]['value'];
     }
-    if(count($field_hcp) > 0){
+    if (count($field_hcp) > 0) {
       $scorecard['hcp'] = $field_hcp[0]['value'];
     }
 
     return $scorecard;
 
-  }else return FALSE;
+  } 
+  else return FALSE;
 }
 
-function contest_results($contest_id,$scorecards){
+function contest_results($contest_id, $scorecards) {
   $results = array();
   $contest = node_load($contest_id);
-  $field_course = field_get_items('node', $contest, 'field_ref_course');
+  $field_course = field_get_items('node', $contest, 'field_course');
   $course = node_load($field_course[0]['target_id']);
   $course->holes = parse_course_holes($course);
   $course->stats = parse_course_stats($course);
@@ -434,104 +476,105 @@ function contest_results($contest_id,$scorecards){
       );
 
       // total score
-      if(!$score)
+      if (!$score)
         $player_data[$i]['stats']['total_score'] = FALSE;
 
-      if($player_data[$i]['stats']['total_score'] !== FALSE)
+      if ($player_data[$i]['stats']['total_score'] !== FALSE)
         $player_data[$i]['stats']['total_score'] += $score;
 
       // in and out 
-      if($hole <= 9){
+      if ( $hole <= 9) {
         $player_data[$i]['stats']['out'] += $score;
-      }else if($hole <= 18){
+      } 
+      elseif ($hole <= 18) {
         $player_data[$i]['stats']['in'] += $score;        
       }
 
       // score names
-      if($score == 1){
+      if ($score == 1) {
         $player_data[$i]['holes'][$hole]['name'] = 'hole-in-one';
         $player_data[$i]['stats']['hole-in-one']++;
       }
 
       // albatross
-      if(($score == 2) && ($course->holes[$hole]['par'] == 5)){
+      if (($score == 2) && ($course->holes[$hole]['par'] == 5)) {
         $player_data[$i]['holes'][$hole]['name'] = 'albatross';
         $player_data[$i]['stats']['albatross']++;
       }
 
       // eagle
-      if(($score == 2) && ($course->holes[$hole]['par'] == 4)){
+      if (($score == 2) && ($course->holes[$hole]['par'] == 4)) {
         $player_data[$i]['holes'][$hole]['name'] = 'eagle';
         $player_data[$i]['stats']['eagle']++;
       }
 
-      if(($score == 3) && ($course->holes[$hole]['par'] == 5)){
+      if (($score == 3) && ($course->holes[$hole]['par'] == 5)) {
         $player_data[$i]['holes'][$hole]['name'] = 'eagle';
         $player_data[$i]['stats']['eagle']++;
       }
 
       // birdies
-      if(($score == 2) && ($course->holes[$hole]['par'] == 3)){
+      if (($score == 2) && ($course->holes[$hole]['par'] == 3)) {
         $player_data[$i]['holes'][$hole]['name'] = 'birdie';
         $player_data[$i]['stats']['birdie']++;
       }
 
-      if(($score == 3) && ($course->holes[$hole]['par'] == 4)){
+      if (($score == 3) && ($course->holes[$hole]['par'] == 4)) {
         $player_data[$i]['holes'][$hole]['name'] = 'birdie';
         $player_data[$i]['stats']['birdie']++;
       }
 
-      if(($score == 4) && ($course->holes[$hole]['par'] == 5)){
+      if (($score == 4) && ($course->holes[$hole]['par'] == 5)) {
         $player_data[$i]['holes'][$hole]['name'] = 'birdie';
         $player_data[$i]['stats']['birdie']++;
       }
 
 
-      if($score == $course->holes[$hole]['par']){
+      if ($score == $course->holes[$hole]['par']) {
         $player_data[$i]['holes'][$hole]['name'] = 'par';
         $player_data[$i]['stats']['par']++;
       }
 
-      if($score == $course->holes[$hole]['par']+1){
+      if ($score == $course->holes[$hole]['par']+1) {
         $player_data[$i]['holes'][$hole]['name'] = 'bogey';
         $player_data[$i]['stats']['bogey']++;
       }
 
-      if($score == $course->holes[$hole]['par']+2){
+      if ($score == $course->holes[$hole]['par']+2) {
         $player_data[$i]['holes'][$hole]['name'] = 'double-bogey';
         $player_data[$i]['stats']['double-bogey']++;
       }
 
-      if($score == $course->holes[$hole]['par']+3){
+      if ($score == $course->holes[$hole]['par']+3) {
         $player_data[$i]['holes'][$hole]['name'] = 'triple-bogey';
         $player_data[$i]['stats']['triple-bogey']++;
       }
 
-      if($course->holes[$hole]['par'] == 3){
-        if($score){
+      if ($course->holes[$hole]['par'] == 3) {
+        if ($score) {
           $player_data[$i]['stats']['par3_count']++;
           $player_data[$i]['stats']['par3_hits'] += $score;
           $player_data[$i]['stats']['par3_average'] = $player_data[$i]['stats']['par3_hits']/$player_data[$i]['stats']['par3_count'];
         }
       }
 
-      if($course->holes[$hole]['par'] == 4){
-        if($score){
+      if ($course->holes[$hole]['par'] == 4) {
+        if ($score) {
           $player_data[$i]['stats']['par4_count']++;
           $player_data[$i]['stats']['par4_hits'] += $score;
           $player_data[$i]['stats']['par4_average'] = $player_data[$i]['stats']['par4_hits']/$player_data[$i]['stats']['par4_count'];
         }
       }
 
-      if($course->holes[$hole]['par'] == 5){
-        if($score){
+      if ($course->holes[$hole]['par'] == 5) {
+        if ($score) {
           $player_data[$i]['stats']['par5_count']++;  
           $player_data[$i]['stats']['par5_hits'] += $score;
           $player_data[$i]['stats']['par5_average'] = $player_data[$i]['stats']['par5_hits']/$player_data[$i]['stats']['par5_count'];
         }
       }
 
-      if($score >= 10){
+      if ($score >= 10) {
         $player_data[$i]['stats']['10_plus']++;        
       }
 
@@ -539,27 +582,27 @@ function contest_results($contest_id,$scorecards){
 
     // net score
       
-    if(isset($scorecards[$i]['playing_hcp'])){
+    if (isset($scorecards[$i]['playing_hcp'])) {
       $course_total = $course->stats['total'];
       $player_data[$i]['stats']['net_score'] = $player_data[$i]['stats']['total_score']-$course_total-(int)$scorecards[$i]['playing_hcp'];
-    }else{
+    }
+    else {
       $player_data[$i]['stats']['net_score'] = '-';
     }
 
-    if($scorecards[$i]['net_score']){
+    if ($scorecards[$i]['net_score']) {
       $player_data[$i]['stats']['net_score'] = (int)$scorecards[$i]['net_score'];
     }
 
 
   }
-  
   usort($player_data, "sort_by_net_score");
   
   $results['publish_results'] = 0;
 
   $field_publish_results = field_get_items('node', $contest, 'field_publish_results');
-  if(isset($field_publish_results[0]['value']))
-    if($field_publish_results[0]['value'] == 1)
+  if (isset($field_publish_results[0]['value'] ) )
+    if ($field_publish_results[0]['value'] == 1)
       $results['publish_results'] = 1;
 
   $results['players'] = $player_data;
@@ -570,44 +613,44 @@ function contest_results($contest_id,$scorecards){
   return $results;
 }
 
-function get_tournament_stats_markup($data){
-  // dsm($data);
+function get_tournament_stats_markup($data) {
   $vars = array(
     'players' => $data['players'],
     'contests' => $data['contests']
   );
-  $markup = theme('tournament_stats',$vars);
-
-
-
+  $markup = theme('tournament_stats', $vars);
   return $markup;
 }
 
-function get_tournament_ranking_markup($data){
+function get_tournament_ranking_markup($data) {
   $vars = array(
     'players' => $data['players'],
     'contests' => $data['contests']
   );
-  // dsm($data);
-  return theme('tournament_ranking',$data);
+  return theme('tournament_ranking', $data);
 }
 
 function sort_overall_ranking_by_net_score($a, $b) {
     return $a["stats"]["net_score"] - $b["stats"]["net_score"];
 }
 
+function sort_overall_ranking_by_total_score($a, $b) {
+    return $a["stats"]["total_score"] - $b["stats"]["total_score"];
+}
+
 function sort_by_net_score($a, $b) {
 
-  if($a["stats"]["net_score"] == $b["stats"]["net_score"]){
+  if ($a["stats"]["net_score"] == $b["stats"]["net_score"]) {
     // try playing hcp first
     $a_playing_hcp = field_get_items('node', $a['round'], 'field_playing_hcp');
     $b_playing_hcp = field_get_items('node', $b['round'], 'field_playing_hcp');
 
-    if($a_playing_hcp && $b_playing_hcp){
+    if ($a_playing_hcp && $b_playing_hcp) {
 
-      if($a_playing_hcp[0]['value'] <= $b_playing_hcp[0]['value']){
+      if ($a_playing_hcp[0]['value'] <= $b_playing_hcp[0]['value']) {
         return -1;
-      }else{
+      }
+      else {
         return 1;
       }
     }
@@ -616,11 +659,12 @@ function sort_by_net_score($a, $b) {
     $a_hcp = field_get_items('node', $a['round'], 'field_hcp');
     $b_hcp = field_get_items('node', $b['round'], 'field_hcp');
 
-    if($a_hcp && $b_hcp){
+    if ($a_hcp && $b_hcp) {
 
-      if($a_hcp[0]['value'] <= $b_hcp[0]['value']){
+      if ($a_hcp[0]['value'] <= $b_hcp[0]['value']) {
         return -1;
-      }else{
+      }
+      else {
         return 1;
       }
     }
@@ -629,17 +673,16 @@ function sort_by_net_score($a, $b) {
   else
     return $a["stats"]["net_score"] - $b["stats"]["net_score"];
 }
+
 function sort_by_total_score($a, $b) {
     return $a["stats"]["total_score"] - $b["stats"]["total_score"];
 }
 
-function contest_results_markup($results){
+function contest_results_markup($results) {
   $course = $results['course'];
   $players = $results['players'];
   $can_edit = user_access('administer content');
   
-  // dsm();
-
   $vars = array(
     'can_edit' => $can_edit,
     'course' => $course,
@@ -647,12 +690,14 @@ function contest_results_markup($results){
     'card_color_explanations_enabled' => TRUE,
     'contest' => $results['contest']
   );
-  if(count($players) > 0)
-    return theme('contest_results',$vars);
-  else return FALSE;
+
+  if (count($players) > 0)
+    return theme('contest_results', $vars);
+  else 
+    return FALSE;
 }
 
-function parse_course_holes($course){
+function parse_course_holes($course) {
   $holes = array();
 
   foreach ($course as $key => $value) {
@@ -660,13 +705,26 @@ function parse_course_holes($course){
 
         $hole_number = (int) str_replace('field_hole_', '', $key);
 
-        $holes[$hole_number] = array('par'=>(int)$value['und'][0]['value'], 'hole'=>$hole_number);
+        $holes[$hole_number] = array(
+          'par' => (int)$value['und'][0]['value'], 
+          'hole' => $hole_number
+        );
       }
   }
+  
+  // sort holes
+  $holes_sorted = array();
+  usort($holes, 'sort_holes_by_hole_number');
+  foreach ($holes as $key => $value) {
+    $hole_number = $value['hole'];
+    $holes_sorted[$hole_number] = $value;
+  }
+  $holes = $holes_sorted;
+
   return $holes;
 }
 
-function parse_course_stats($course){
+function parse_course_stats($course) {
   $stats = array(
     'total' => 0
   );
@@ -683,7 +741,7 @@ function parse_course_stats($course){
 function golf_menu() {
 
   $items['node/%node/add-contest'] = array(
-    'title' => t("Add contest"),
+    'title' => "Add contest",
     'access callback' => "add_contest_permissions",
     'access arguments' => array(1),
     'page callback' => "redirect_add_contest",
@@ -693,7 +751,7 @@ function golf_menu() {
   );
 
   $items['node/%node/add-round'] = array(
-    'title' => t("Add round"),
+    'title' => "Add round",
     'access callback' => "add_round_permissions",
     'access arguments' => array(1),
     'page callback' => "redirect_add_round",
@@ -706,14 +764,20 @@ function golf_menu() {
   return $items;
 }
 function redirect_add_contest($node) {
+  global $base_url;
   $query = array();
-
   $query['tournament_id'] = $node->nid;
+  $query['destination'] = 'node/' . $node->nid;
 
-  $query['destination'] = 'node/'.$node->nid;
+  drupal_goto(
+    $base_url . '/node/add/golf-contest', 
+    array(
+      'alias' => TRUE,
+      'query' => $query
+    ), 
+    302);
 
-  drupal_goto('/node/add/golf_contest', array('external' => TRUE,'query'=>$query), 302);
-  return false;
+  return FALSE;
 }
 
 function add_contest_permissions($node) {
@@ -721,15 +785,24 @@ function add_contest_permissions($node) {
 }
 
 function redirect_add_round($node) {
+  global $base_url;
   $query = array();
   $query['contest_id'] = $node->nid;
-  $query['destination'] = 'node/'.$node->nid;
-  drupal_goto('node/add/round', array('query'=>$query,'alias'=>TRUE), 302);
-  return false;
+  $query['destination'] = 'node/' . $node->nid;
+
+  drupal_goto(
+    $base_url . '/node/add/golf-round', 
+    array(
+      'query' => $query,
+      'alias' => TRUE
+    ), 
+    302);
+
+  return FALSE;
 }
 
 
 function add_round_permissions($node) {
-  return ($node->type == 'contest') && user_access('administer nodes');
+  return ($node->type == 'golf_contest') && user_access('administer nodes');
 }
 
